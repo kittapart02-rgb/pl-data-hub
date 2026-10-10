@@ -1,0 +1,52 @@
+# Refresh the data twice a day and redeploy the site to GitHub Pages.
+# Times are UTC: 21:07 = 04:07 Bangkok, 09:07 = 16:07 Bangkok.
+# If the integrity check fails nothing is deployed, and GitHub emails the repo owner about the failed run.
+name: Update data and deploy
+
+on:
+  schedule:
+    - cron: '7 21 * * *'
+    - cron: '7 9 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download sources
+        run: bash etl/fetch.sh
+      - name: Build data (fails on any integrity mismatch)
+        run: python3 etl/build_data.py --strict
+      - name: Build site
+        run: |
+          python3 build.py
+          mkdir -p site
+          cp dist/index.html site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
